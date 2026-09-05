@@ -1,7 +1,6 @@
 # PCEE2 — PCSX2 libretro core
 
 ![Libretro Core Builds](https://img.shields.io/github/actions/workflow/status/WizzardSK/pcee2-libretro/libretro_builds.yml?branch=libretro&label=core%20builds)
-[![Latest Release](https://img.shields.io/github/v/release/WizzardSK/pcee2-libretro)](https://github.com/WizzardSK/pcee2-libretro/releases/latest)
 
 A [libretro](https://www.libretro.com/) core frontend for the current PCSX2
 codebase, letting RetroArch (and other libretro frontends) run PS2 games with
@@ -53,16 +52,19 @@ which is double-buffered on the GS thread and costs one frame of latency;
 
 ## Download
 
-Grab the latest core from the [Releases page](https://github.com/WizzardSK/pcee2-libretro/releases)
-and copy everything in the zip into your RetroArch `cores` directory. The
-cores are statically linked single files (Linux `.so`, Windows `.dll`); macOS
-additionally ships `libMoltenVK.dylib` (the Vulkan driver) next to the core,
-and needs the quarantine flag cleared once:
+Through RetroArch: **Online Updater → Core Downloader → PCEE2**. The libretro
+buildbot builds this branch nightly for Windows x64, Linux x64 and aarch64,
+macOS x64 and arm64, and Android arm64-v8a and x86_64, so what it hands out is
+always the current tree. There are no releases here on purpose: another place
+to download from is another place to be out of date.
+
+macOS needs the quarantine flag cleared once:
 `xattr -cr ~/Library/Application\ Support/RetroArch/cores`.
 
 Per-commit builds are available as artifacts of the
 [Libretro Core Builds](https://github.com/WizzardSK/pcee2-libretro/actions/workflows/libretro_builds.yml)
-workflow.
+workflow — that is also where to get a build of a branch, or one for a target
+the buildbot does not cover.
 
 ## Setup
 
