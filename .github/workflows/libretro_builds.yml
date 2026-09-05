@@ -6,8 +6,6 @@ on:
       - libretro
       - libretro-arm64
       - "libretro-arm64-*"
-    tags:
-      - "v*"
   workflow_dispatch:
 
 jobs:
@@ -610,36 +608,3 @@ jobs:
         with:
           name: pcee2_libretro-macos-arm64
           path: artifact/*
-
-  release:
-    name: "Attach Release Assets"
-    # A release ships the x86_64 Linux and the Windows core, so both must build;
-    # a failure in either blocks publishing rather than quietly shipping a
-    # release that is missing a platform.
-    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && needs.build_linux.result == 'success' && needs.build_windows.result == 'success' }}
-    # bookworm jobs are in needs (not in the if) purely to order the release
-    # after them, so their aarch64 cores exist when artifacts are downloaded;
-    # !cancelled() means a bookworm failure still lets the release run.
-    needs: [build_linux, build_windows, build_macos, build_macos_arm64, build_linux_arm64_bookworm, build_linux_arm64_bookworm_16k]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - name: Download Artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-
-      - name: Package
-        run: |
-          cd artifacts
-          for dir in pcee2_libretro-*; do
-            [ -d "$dir" ] && (cd "$dir" && zip -9 "../$dir.zip" *)
-          done
-
-      - name: Attach to Release
-        uses: softprops/action-gh-release@v3.0.3
-        with:
-          prerelease: false
-          make_latest: true
-          files: artifacts/pcee2_libretro-*.zip
