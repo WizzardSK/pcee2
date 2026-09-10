@@ -52,10 +52,50 @@ bool Vulkan::LoadVulkanLibrary(Error* error)
 	char* libvulkan_env = getenv("LIBVULKAN_PATH");
 	if (libvulkan_env)
 		s_vulkan_library.Open(libvulkan_env, error);
-	if (!s_vulkan_library.IsOpen() &&
-		!s_vulkan_library.Open(DynamicLibrary::GetVersionedFilename("MoltenVK").c_str(), error))
+
+	if (!s_vulkan_library.IsOpen())
 	{
-		return false;
+		// A libretro core has no bundle of its own: it gets whatever the frontend
+		// brought along. RetroArch ships MoltenVK inside its own bundle - as a plain
+		// dylib in some builds, as a framework in others - and a Vulkan SDK install
+		// leaves the loader on the library path instead, so try all of them rather
+		// than only the name a bundled PCSX2 would use. DynamicLibrary::Open() looks
+		// beside this module and in the running bundle's Frameworks directory for
+		// each name, which is why the framework candidate is written as a relative
+		// path.
+		const std::string candidates[] = {
+			DynamicLibrary::GetVersionedFilename("MoltenVK"),
+			"MoltenVK.framework/MoltenVK",
+			DynamicLibrary::GetVersionedFilename("vulkan", 1),
+			DynamicLibrary::GetVersionedFilename("vulkan"),
+		};
+
+		for (const std::string& candidate : candidates)
+		{
+			if (s_vulkan_library.Open(candidate.c_str(), nullptr))
+			{
+				INFO_LOG("Vulkan: Loaded {}", candidate);
+				break;
+			}
+		}
+
+		if (!s_vulkan_library.IsOpen())
+		{
+			std::string tried;
+			for (const std::string& candidate : candidates)
+			{
+				if (!tried.empty())
+					tried += ", ";
+				tried += candidate;
+			}
+
+			Error::SetStringFmt(error,
+				"Failed to load a Vulkan library. Tried {} - beside the core, and in the "
+				"Frameworks directory of the running application. Set LIBVULKAN_PATH to "
+				"point at one.",
+				tried);
+			return false;
+		}
 	}
 #else
 	// try versioned first, then unversioned.
