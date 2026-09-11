@@ -268,6 +268,20 @@ namespace LibretroHost
 	static constexpr u32 SAMPLE_RATE = 48000;
 	static constexpr u32 MAX_AUDIO_FRAMES_PER_RUN = 2048;
 
+	// What the frontend last said about its audio buffer. A write into a full
+	// one blocks until something drains it, and a frontend whose audio device
+	// is not running - a menu is open, the VM is paused - drains nothing, so
+	// that write does not return and retro_run never does either. The CPU
+	// thread is then parked waiting for a frame token the main thread cannot
+	// give it, which is the deadlock in issue #36.
+	//
+	// Registering this is what lets the core see that coming: at a high
+	// occupancy it hands over nothing that frame rather than risk the block.
+	// The frontend repeats the last buffer, which is audible as a moment of
+	// stutter and is a great deal better than a hang.
+	static std::atomic_bool s_audio_status_known{false};
+	static std::atomic<unsigned> s_audio_occupancy{0};
+
 	// VM timing reported to the frontend (PAL games run at 50Hz, PSX mode at
 	// 44.1kHz); updated from the CPU/audio-factory threads, consumed in retro_run
 	static std::atomic<u32> s_vm_fps_bits{0};
@@ -2103,6 +2117,10 @@ static std::string BuildDiscList(const char* content_path)
 	return s_discs[s_disc_index].boot_path;
 }
 
+// Defined with the audio output below; declared here because retro_load_game
+// registers it before that point in the file.
+static void RETRO_CALLCONV AudioBufferStatus(bool active, unsigned occupancy, bool underrun_likely);
+
 bool retro_load_game(const struct retro_game_info* game)
 {
 	// No content means boot the BIOS. A frontend signals that with a null
@@ -2116,6 +2134,16 @@ bool retro_load_game(const struct retro_game_info* game)
 	{
 		Console.Error("XRGB8888 pixel format not supported by frontend.");
 		return false;
+	}
+
+	// Ask to be told how full the frontend's audio buffer is. Not every
+	// frontend answers, and one that does not leaves the core behaving as it
+	// did before, which is why OutputAudio only acts on the figure once it has
+	// actually been given one.
+	{
+		struct retro_audio_buffer_status_callback audio_status{AudioBufferStatus};
+		if (!s_environ_cb(RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK, &audio_status))
+			Console.WriteLn("libretro: the frontend does not report audio buffer status");
 	}
 
 	if (!InitializeConfig())
@@ -2554,8 +2582,20 @@ static void UpdateInput()
 // pad_when_empty keeps the frontend's pipeline fed while nothing is being
 // produced yet; the pacing loop in retro_run() drains without it, since a
 // silent block there would be inserted into a stream that is running fine.
+static void RETRO_CALLCONV AudioBufferStatus(bool active, unsigned occupancy, bool underrun_likely)
+{
+	s_audio_status_known.store(active, std::memory_order_release);
+	s_audio_occupancy.store(occupancy, std::memory_order_release);
+}
+
 static void OutputAudio(bool pad_when_empty = true)
 {
+	// Leave the frontend alone while its buffer is nearly full: what it does
+	// with an over-full one is block, and on some drivers block for good.
+	if (s_audio_status_known.load(std::memory_order_acquire) &&
+		s_audio_occupancy.load(std::memory_order_acquire) >= 90)
+		return;
+
 	if (!s_audio_batch_cb)
 		return;
 
